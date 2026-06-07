@@ -57,6 +57,10 @@ See [docs/setup.md](docs/setup.md) for the full step-by-step guide.
 
 If something breaks, see [docs/debugging.md](docs/debugging.md) for a systematic troubleshooting guide based on real issues we've solved.
 
+## Swarm Integration (Cloude-flow)
+
+Use Claude Router as the upstream proxy for **Claude Swarm** agents running inside Docker. See [docs/swarm-integration.md](docs/swarm-integration.md) for the wire/unwire guide.
+
 ## Updating
 
 See [docs/updating.md](docs/updating.md) for how to update the proxy, scripts, or provider auth.

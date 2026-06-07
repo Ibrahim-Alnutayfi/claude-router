@@ -73,7 +73,7 @@ function evictOldestSessions(): void {
 
 export function startServer(opts: ServeOptions): { stop: () => void; port: number } {
   const server = Bun.serve({
-    hostname: "127.0.0.1",
+    hostname: process.env.CCP_HOST ?? "127.0.0.1",
     port: opts.port,
     idleTimeout: 255,
     async fetch(req) {

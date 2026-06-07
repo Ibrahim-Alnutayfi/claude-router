@@ -3,6 +3,17 @@ function claudeRouter
     set PROXY_PORT 18765
     set ZAI_ENV_FILE "$HOME/.config/claude-router/.env"
 
+    # ── Parse flags ──
+    set SWARM_MODE false
+    set CLAUDE_ARGS
+    for arg in $argv
+        if test "$arg" = "--swarm"
+            set SWARM_MODE true
+        else
+            set CLAUDE_ARGS $CLAUDE_ARGS $arg
+        end
+    end
+
     # ── Kill existing proxy ──
     set PIDS (lsof -t -i:$PROXY_PORT 2>/dev/null)
     if test -n "$PIDS"
@@ -15,14 +26,23 @@ function claudeRouter
         set ZAI_API_KEY (grep '^ZAI_API_KEY=' "$ZAI_ENV_FILE" 2>/dev/null | cut -d= -f2-)
     end
 
-    # ── Remember where we are ──
-    set ORIGINAL_DIR (pwd)
+    # ── Swarm mode: bind externally, run proxy in foreground ──
+    if test "$SWARM_MODE" = "true"
+        echo "Starting proxy in swarm mode (accessible from Docker)..."
+        echo "Docker containers should use: http://host.docker.internal:$PROXY_PORT"
+        cd "$PROXY_DIR"
+        set -e ANTHROPIC_API_KEY 2>/dev/null
+        set -e ANTHROPIC_AUTH_TOKEN 2>/dev/null
+        env ZAI_API_KEY="$ZAI_API_KEY" CCP_ALIAS_PROVIDER="anthropic" CCP_HOST="0.0.0.0" \
+            bun run src/cli.ts serve
+        return
+    end
 
-    # Clean leaked auth vars before starting proxy so it doesn't pick them up
+    # ── Normal mode ──
+    set ORIGINAL_DIR (pwd)
     set -e ANTHROPIC_API_KEY 2>/dev/null
     set -e ANTHROPIC_AUTH_TOKEN 2>/dev/null
 
-    # ── Start proxy in background ──
     cd "$PROXY_DIR"
     env ZAI_API_KEY="$ZAI_API_KEY" CCP_ALIAS_PROVIDER="anthropic" \
         bun run src/cli.ts serve >/dev/null 2>&1 &
@@ -38,7 +58,6 @@ function claudeRouter
         sleep 0.25
     end
 
-    # ── Launch Claude Code from original directory ──
     cd "$ORIGINAL_DIR"
 
     set -x ANTHROPIC_BASE_URL "http://localhost:$PROXY_PORT"
@@ -46,5 +65,5 @@ function claudeRouter
     set -x ANTHROPIC_SMALL_FAST_MODEL "haiku"
     set -x CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC "1"
 
-    claude $argv
+    claude $CLAUDE_ARGS
 end

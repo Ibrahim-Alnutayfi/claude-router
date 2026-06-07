@@ -1,10 +1,23 @@
 #!/bin/bash
 
 # Claude Router — starts claude-code-proxy and launches Claude Code
+# Usage: claudeRouter [args...]          → normal mode (localhost only)
+#        claudeRouter --swarm [args...]  → swarm mode (binds 0.0.0.0 for Docker)
 
 PROXY_DIR="/Users/ibrahimalnutayfi/Desktop/Desktop - Ibrahim MAC/Tools/claude-code-proxy"
 PROXY_PORT=18765
 ZAI_ENV_FILE="$HOME/.config/claude-router/.env"
+
+# ── Parse flags ──
+SWARM_MODE=false
+CLAUDE_ARGS=()
+for arg in "$@"; do
+  if [ "$arg" = "--swarm" ]; then
+    SWARM_MODE=true
+  else
+    CLAUDE_ARGS+=("$arg")
+  fi
+done
 
 # ── Kill existing proxy ──
 kill -9 $(lsof -t -i:$PROXY_PORT 2>/dev/null) 2>/dev/null
@@ -15,7 +28,20 @@ if [ -f "$ZAI_ENV_FILE" ]; then
   ZAI_API_KEY=$(grep '^ZAI_API_KEY=' "$ZAI_ENV_FILE" 2>/dev/null | cut -d= -f2-)
 fi
 
-# ── Remember where we are ──
+# ── Swarm mode: bind externally, run proxy in foreground ──
+if [ "$SWARM_MODE" = true ]; then
+  echo "Starting proxy in swarm mode (accessible from Docker)..."
+  echo "Docker containers should use: http://host.docker.internal:$PROXY_PORT"
+  cd "$PROXY_DIR" || exit 1
+  unset ANTHROPIC_API_KEY 2>/dev/null
+  unset ANTHROPIC_AUTH_TOKEN 2>/dev/null
+  export ZAI_API_KEY="$ZAI_API_KEY"
+  export CCP_ALIAS_PROVIDER="anthropic"
+  export CCP_HOST="0.0.0.0"
+  exec bun run src/cli.ts serve
+fi
+
+# ── Normal mode ──
 ORIGINAL_DIR="$(pwd)"
 
 # ── Start proxy in background ──
@@ -51,4 +77,4 @@ export ANTHROPIC_MODEL="sonnet"
 export ANTHROPIC_SMALL_FAST_MODEL="haiku"
 export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="1"
 
-claude "$@"
+claude "${CLAUDE_ARGS[@]}"
