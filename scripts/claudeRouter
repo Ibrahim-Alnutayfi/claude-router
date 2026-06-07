@@ -1,0 +1,54 @@
+#!/bin/bash
+
+# Claude Router — starts claude-code-proxy and launches Claude Code
+
+PROXY_DIR="/Users/ibrahimalnutayfi/Desktop/Desktop - Ibrahim MAC/Tools/claude-code-proxy"
+PROXY_PORT=18765
+ZAI_ENV_FILE="$HOME/.claude/gateway/.env"
+
+# ── Kill existing proxy ──
+kill -9 $(lsof -t -i:$PROXY_PORT 2>/dev/null) 2>/dev/null
+
+# ── Load ZAI key if available ──
+ZAI_API_KEY=""
+if [ -f "$ZAI_ENV_FILE" ]; then
+  ZAI_API_KEY=$(grep '^ZAI_API_KEY=' "$ZAI_ENV_FILE" 2>/dev/null | cut -d= -f2-)
+fi
+
+# ── Remember where we are ──
+ORIGINAL_DIR="$(pwd)"
+
+# ── Start proxy in background ──
+(
+  cd "$PROXY_DIR" || exit 1
+  unset ANTHROPIC_API_KEY 2>/dev/null
+  unset ANTHROPIC_AUTH_TOKEN 2>/dev/null
+  export ZAI_API_KEY="$ZAI_API_KEY"
+  export CCP_ALIAS_PROVIDER="anthropic"
+  bun run src/cli.ts serve >/dev/null 2>&1 &
+)
+
+# ── Wait for proxy to be ready ──
+echo -n "Starting proxy"
+for i in {1..20}; do
+  if lsof -i:$PROXY_PORT >/dev/null 2>&1; then
+    echo " ✓"
+    break
+  fi
+  echo -n "."
+  sleep 0.25
+done
+
+# ── Launch Claude Code from original directory ──
+cd "$ORIGINAL_DIR"
+
+# Clean any leaked auth vars so Claude Code uses its stored OAuth only
+unset ANTHROPIC_API_KEY 2>/dev/null
+unset ANTHROPIC_AUTH_TOKEN 2>/dev/null
+
+export ANTHROPIC_BASE_URL="http://localhost:$PROXY_PORT"
+export ANTHROPIC_MODEL="sonnet"
+export ANTHROPIC_SMALL_FAST_MODEL="haiku"
+export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="1"
+
+claude "$@"
