@@ -72,8 +72,8 @@ Fish auto-loads functions — no PATH modification needed.
 Create the env file:
 
 ```bash
-mkdir -p ~/.claude/gateway
-echo 'ZAI_API_KEY=your-zai-key-here' > ~/.claude/gateway/.env
+mkdir -p ~/.config/claude-router
+echo 'ZAI_API_KEY=your-zai-key-here' > ~/.config/claude-router/.env
 ```
 
 Get your key from [z.ai](https://z.ai).
@@ -124,7 +124,7 @@ Inside Claude Code:
 1. Kills any existing proxy on port 18765
 2. Starts `claude-code-proxy` in the background with:
    - `CCP_ALIAS_PROVIDER=anthropic` (routes `sonnet`/`opus`/`haiku` to Anthropic)
-   - `ZAI_API_KEY` loaded from `~/.claude/gateway/.env`
+   - `ZAI_API_KEY` loaded from `~/.config/claude-router/.env`
 3. Waits for the proxy to be ready
 4. Launches Claude Code with:
    - `ANTHROPIC_BASE_URL=http://localhost:18765`

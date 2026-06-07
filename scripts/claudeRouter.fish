@@ -1,7 +1,7 @@
 function claudeRouter
     set PROXY_DIR "/Users/ibrahimalnutayfi/Desktop/Desktop - Ibrahim MAC/Tools/claude-code-proxy"
     set PROXY_PORT 18765
-    set ZAI_ENV_FILE "$HOME/.claude/gateway/.env"
+    set ZAI_ENV_FILE "$HOME/.config/claude-router/.env"
 
     # ── Kill existing proxy ──
     set PIDS (lsof -t -i:$PROXY_PORT 2>/dev/null)

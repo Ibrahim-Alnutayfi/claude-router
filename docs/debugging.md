@@ -124,7 +124,7 @@ echo $ZAI_API_KEY
 # Should print your key
 ```
 
-If empty, check `~/.claude/gateway/.env` exists and the script sources it.
+If empty, check `~/.config/claude-router/.env` exists and the script sources it.
 
 ---
 

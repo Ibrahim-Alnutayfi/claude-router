@@ -40,7 +40,7 @@ mkdir -p ~/.config/fish/functions
 cp scripts/claudeRouter.fish ~/.config/fish/functions/claudeRouter.fish
 
 # 5. Set your ZAI key (optional, for GLM models)
-echo 'ZAI_API_KEY=your-key-here' > ~/.claude/gateway/.env
+echo 'ZAI_API_KEY=your-key-here' > ~/.config/claude-router/.env
 
 # 6. Authenticate providers you want to use
 claude-code-proxy codex auth login      # For GPT/Codex models

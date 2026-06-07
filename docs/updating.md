@@ -48,10 +48,10 @@ claude-code-proxy codex auth login
 
 ### Update ZAI key
 
-Edit `~/.claude/gateway/.env`:
+Edit `~/.config/claude-router/.env`:
 
 ```bash
-echo 'ZAI_API_KEY=new-key-here' > ~/.claude/gateway/.env
+echo 'ZAI_API_KEY=new-key-here' > ~/.config/claude-router/.env
 ```
 
 ## Update claudeRouter scripts

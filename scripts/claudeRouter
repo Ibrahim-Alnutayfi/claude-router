@@ -4,7 +4,7 @@
 
 PROXY_DIR="/Users/ibrahimalnutayfi/Desktop/Desktop - Ibrahim MAC/Tools/claude-code-proxy"
 PROXY_PORT=18765
-ZAI_ENV_FILE="$HOME/.claude/gateway/.env"
+ZAI_ENV_FILE="$HOME/.config/claude-router/.env"
 
 # ── Kill existing proxy ──
 kill -9 $(lsof -t -i:$PROXY_PORT 2>/dev/null) 2>/dev/null
