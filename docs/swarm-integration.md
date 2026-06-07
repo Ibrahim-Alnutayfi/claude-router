@@ -1,6 +1,6 @@
 # Swarm Integration (Cloude-flow)
 
-Use Claude Router as the upstream proxy for **Claude Swarm** agents running inside Docker containers. This lets every agent in your swarm route through the same multi-provider gateway — so your `lead_developer` can use Anthropic, your `frontend_dev` can use Kimi, and your `backend_dev` can use Codex, all orchestrated by Cloude-flow.
+Use Claude Router as the upstream proxy for **Claude Swarm** agents running inside Docker containers. Every agent in your swarm routes through the same multi-provider gateway.
 
 ## How It Works
 
@@ -18,7 +18,16 @@ Use Claude Router as the upstream proxy for **Claude Swarm** agents running insi
 └─────────────────┘
 ```
 
-## Wire (One-Time Setup)
+## Commands
+
+| Command | What it does |
+|---|---|
+| `claudeRouter --swarm` | Starts proxy → starts Docker → launches `claude-swarm` inside container. Cleans up everything on exit. |
+| `claudeRouter --swarm --off` | Stops Docker containers + kills proxy |
+| `claudeRouter --swarm --status` | Shows proxy + Docker status |
+| `claudeRouter` | Normal mode (unchanged) |
+
+## One-Time Setup
 
 ### 1. Proxy patch (already applied if you followed Setup)
 
@@ -58,72 +67,45 @@ services:
       - CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
 ```
 
-## Run (Every Session)
+## Daily Use
 
-### Step 1: Start the proxy in swarm mode
-
-In a **dedicated terminal**:
+### Start a swarm session
 
 ```bash
 claudeRouter --swarm
 ```
 
-You'll see:
-```
-Starting proxy in swarm mode (accessible from Docker)...
-Docker containers should use: http://host.docker.internal:18765
-```
+What happens:
+1. Proxy starts on `0.0.0.0:18765` (Docker-accessible)
+2. Cloude-flow containers start with proxy overlay
+3. `claude-swarm` launches inside the app container
+4. Work with your AI team. Use `/model` to switch providers per agent.
+5. When you exit `claude-swarm`, everything auto-cleans up
 
-The proxy now binds to `0.0.0.0:18765` so Docker can reach it.
-
-### Step 2: Start Cloude-flow with the proxy overlay
-
-In another terminal:
+### Check status
 
 ```bash
-cd ~/Tools/Cloude-flow
-docker-compose -f docker-compose.yml -f docker-compose.proxy.yml up -d
+claudeRouter --swarm --status
 ```
 
-Or if you prefer the helper script, modify `docker-scripts.sh` to include the extra compose file:
+Output:
+```
+┌─────────────────────────────────────┐
+│        Swarm Status                 │
+├─────────────────────────────────────┤
+│ Proxy:     RUNNING (PID 12345)      │
+│ Docker:    RUNNING                  │
+└─────────────────────────────────────┘
+```
+
+### Stop early
 
 ```bash
-# In docker-scripts.sh, change all docker-compose commands to:
-docker-compose -f docker-compose.yml -f docker-compose.proxy.yml ...
+claudeRouter --swarm --off
 ```
 
-### Step 3: Enter the container and run the swarm
-
-```bash
-cd ~/Tools/Cloude-flow
-./docker-scripts.sh shell
-# Inside container:
-claude-swarm
-```
-
-Every agent in your `claude-swarm.yml` will now route through your proxy. You can configure individual agents to use different models via `/model` inside each agent's session.
-
-## Unwire (When Done)
-
-### Step 1: Stop Cloude-flow
-
-```bash
-cd ~/Tools/Cloude-flow
-./docker-scripts.sh stop
-```
-
-### Step 2: Stop the proxy
-
-In the terminal running `claudeRouter --swarm`, press **Ctrl+C**.
-
-### Step 3: (Optional) Remove the compose overlay
-
-```bash
-rm ~/Tools/Cloude-flow/docker-compose.proxy.yml
-```
-
-Normal `claudeRouter` (without `--swarm`) continues to work exactly as before — it binds to `127.0.0.1` only.
+Stops Docker containers and kills the proxy.
 
 ## Security Note
 
-`--swarm` binds the proxy to `0.0.0.0` (all interfaces). On a trusted local network this is low risk since it's a high port (18765) with no sensitive data stored. Do **not** use `--swarm` on untrusted networks.
+`--swarm` binds the proxy to `0.0.0.0` (all interfaces). On a trusted local network this is low risk. Do **not** use `--swarm` on untrusted networks.

@@ -1,26 +1,31 @@
 #!/bin/bash
 
 # Claude Router — starts claude-code-proxy and launches Claude Code
-# Usage: claudeRouter [args...]          → normal mode (localhost only)
-#        claudeRouter --swarm [args...]  → swarm mode (binds 0.0.0.0 for Docker)
+#
+# Usage:
+#   claudeRouter [args...]                     → normal mode (localhost only)
+#   claudeRouter --swarm                       → swarm mode (starts proxy + Docker + claude-swarm)
+#   claudeRouter --swarm --off                 → stop swarm (proxy + Docker)
+#   claudeRouter --swarm --status              → show swarm status
 
 PROXY_DIR="/Users/ibrahimalnutayfi/Desktop/Desktop - Ibrahim MAC/Tools/claude-code-proxy"
+CLOUDE_FLOW_DIR="/Users/ibrahimalnutayfi/Desktop/Desktop - Ibrahim MAC/Tools/Cloude-flow"
 PROXY_PORT=18765
 ZAI_ENV_FILE="$HOME/.config/claude-router/.env"
 
 # ── Parse flags ──
 SWARM_MODE=false
+SWARM_OFF=false
+SWARM_STATUS=false
 CLAUDE_ARGS=()
 for arg in "$@"; do
-  if [ "$arg" = "--swarm" ]; then
-    SWARM_MODE=true
-  else
-    CLAUDE_ARGS+=("$arg")
-  fi
+  case "$arg" in
+    --swarm)   SWARM_MODE=true ;;
+    --off)     SWARM_OFF=true ;;
+    --status)  SWARM_STATUS=true ;;
+    *)         CLAUDE_ARGS+=("$arg") ;;
+  esac
 done
-
-# ── Kill existing proxy ──
-kill -9 $(lsof -t -i:$PROXY_PORT 2>/dev/null) 2>/dev/null
 
 # ── Load ZAI key if available ──
 ZAI_API_KEY=""
@@ -28,21 +33,104 @@ if [ -f "$ZAI_ENV_FILE" ]; then
   ZAI_API_KEY=$(grep '^ZAI_API_KEY=' "$ZAI_ENV_FILE" 2>/dev/null | cut -d= -f2-)
 fi
 
-# ── Swarm mode: bind externally, run proxy in foreground ──
-if [ "$SWARM_MODE" = true ]; then
-  echo "Starting proxy in swarm mode (accessible from Docker)..."
-  echo "Docker containers should use: http://host.docker.internal:$PROXY_PORT"
-  cd "$PROXY_DIR" || exit 1
-  unset ANTHROPIC_API_KEY 2>/dev/null
-  unset ANTHROPIC_AUTH_TOKEN 2>/dev/null
-  export ZAI_API_KEY="$ZAI_API_KEY"
-  export CCP_ALIAS_PROVIDER="anthropic"
-  export CCP_HOST="0.0.0.0"
-  exec bun run src/cli.ts serve
+# ═══════════════════════════════════════════════════════════════
+# SWARM STATUS
+# ═══════════════════════════════════════════════════════════════
+if [ "$SWARM_STATUS" = true ]; then
+  echo "┌─────────────────────────────────────┐"
+  echo "│        Swarm Status                 │"
+  echo "├─────────────────────────────────────┤"
+
+  if lsof -i:$PROXY_PORT >/dev/null 2>&1; then
+    PID=$(lsof -t -i:$PROXY_PORT 2>/dev/null)
+    echo "│ Proxy:     RUNNING (PID $PID)       │"
+  else
+    echo "│ Proxy:     STOPPED                  │"
+  fi
+
+  if docker-compose -f "$CLOUDE_FLOW_DIR/docker-compose.yml" -f "$CLOUDE_FLOW_DIR/docker-compose.proxy.yml" ps 2>/dev/null | grep -q "Up"; then
+    echo "│ Docker:    RUNNING                  │"
+  else
+    echo "│ Docker:    STOPPED                  │"
+  fi
+
+  echo "└─────────────────────────────────────┘"
+  exit 0
 fi
 
-# ── Normal mode ──
-ORIGINAL_DIR="$(pwd)"
+# ═══════════════════════════════════════════════════════════════
+# SWARM OFF
+# ═══════════════════════════════════════════════════════════════
+if [ "$SWARM_OFF" = true ]; then
+  echo "Stopping swarm..."
+  cd "$CLOUDE_FLOW_DIR" || exit 1
+  docker-compose -f docker-compose.yml -f docker-compose.proxy.yml down 2>/dev/null
+  kill -9 $(lsof -t -i:$PROXY_PORT 2>/dev/null) 2>/dev/null
+  echo "Swarm stopped."
+  exit 0
+fi
+
+# ═══════════════════════════════════════════════════════════════
+# SWARM ON (managed session)
+# ═══════════════════════════════════════════════════════════════
+if [ "$SWARM_MODE" = true ]; then
+  echo "Starting swarm session..."
+
+  # Kill any existing proxy
+  kill -9 $(lsof -t -i:$PROXY_PORT 2>/dev/null) 2>/dev/null
+
+  # Cleanup runs on exit / interrupt
+  cleanup() {
+    echo ""
+    echo "Stopping swarm session..."
+    cd "$CLOUDE_FLOW_DIR" 2>/dev/null && docker-compose -f docker-compose.yml -f docker-compose.proxy.yml down 2>/dev/null
+    kill -9 $(lsof -t -i:$PROXY_PORT 2>/dev/null) 2>/dev/null
+    echo "Swarm stopped."
+  }
+  trap 'cleanup; exit 130' INT
+  trap cleanup EXIT
+
+  # Start proxy in background (binds 0.0.0.0 so Docker can reach it)
+  (
+    cd "$PROXY_DIR" || exit 1
+    unset ANTHROPIC_API_KEY 2>/dev/null
+    unset ANTHROPIC_AUTH_TOKEN 2>/dev/null
+    export ZAI_API_KEY="$ZAI_API_KEY"
+    export CCP_ALIAS_PROVIDER="anthropic"
+    export CCP_HOST="0.0.0.0"
+    bun run src/cli.ts serve >/dev/null 2>&1 &
+  )
+
+  # Wait for proxy
+  echo -n "Starting proxy"
+  for i in {1..20}; do
+    if lsof -i:$PROXY_PORT >/dev/null 2>&1; then
+      echo " ✓"
+      break
+    fi
+    echo -n "."
+    sleep 0.25
+  done
+
+  # Start Docker containers
+  cd "$CLOUDE_FLOW_DIR" || exit 1
+  echo "Starting Cloude-flow containers..."
+  docker-compose -f docker-compose.yml -f docker-compose.proxy.yml up -d
+
+  # Launch claude-swarm inside container (blocks until user exits)
+  echo "Launching claude-swarm (press Ctrl+D or type /exit to quit)..."
+  docker-compose -f docker-compose.yml -f docker-compose.proxy.yml exec -it app claude-swarm
+
+  # Cleanup fires automatically via trap
+  exit 0
+fi
+
+# ═══════════════════════════════════════════════════════════════
+# NORMAL MODE
+# ═══════════════════════════════════════════════════════════════
+
+# ── Kill existing proxy ──
+kill -9 $(lsof -t -i:$PROXY_PORT 2>/dev/null) 2>/dev/null
 
 # ── Start proxy in background ──
 (
@@ -66,6 +154,7 @@ for i in {1..20}; do
 done
 
 # ── Launch Claude Code from original directory ──
+ORIGINAL_DIR="$(pwd)"
 cd "$ORIGINAL_DIR"
 
 # Clean any leaked auth vars so Claude Code uses its stored OAuth only
