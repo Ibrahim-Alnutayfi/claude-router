@@ -100,6 +100,14 @@ function claudeRouter
             sleep 0.25
         end
 
+        # Verify Docker is running
+        if not docker info >/dev/null 2>&1
+            echo ""
+            echo "❌ Docker is not running. Start Docker Desktop first:"
+            echo "   open -a Docker"
+            return 1
+        end
+
         # Start Docker containers
         cd "$CLOUDE_FLOW_DIR"
         echo "Starting Cloude-flow containers..."
