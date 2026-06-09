@@ -4,6 +4,12 @@ function claudeRouter
     set PROXY_PORT 18765
     set ZAI_ENV_FILE "$HOME/.config/claude-router/.env"
 
+    # Initialize rbenv if available
+    if test -d "$HOME/.rbenv/shims"
+        set PATH "$HOME/.rbenv/shims" $PATH
+        rbenv init - fish 2>/dev/null | source 2>/dev/null
+    end
+
     # ── Parse flags ──
     set SWARM_MODE false
     set SWARM_OFF false
@@ -71,34 +77,41 @@ function claudeRouter
     end
 
     # ═══════════════════════════════════════════════════════════════
+    # HELPER: ensure proxy is running
+    # ═══════════════════════════════════════════════════════════════
+    function _ensure_proxy
+        if lsof -i:$PROXY_PORT >/dev/null 2>&1
+            echo "Proxy already running on port $PROXY_PORT (reusing)"
+            return 0
+        end
+
+        cd "$PROXY_DIR"
+        set -e ANTHROPIC_API_KEY 2>/dev/null
+        set -e ANTHROPIC_AUTH_TOKEN 2>/dev/null
+        env ZAI_API_KEY="$ZAI_API_KEY" CCP_ALIAS_PROVIDER="anthropic" \
+            bun run src/cli.ts serve >/dev/null 2>&1 &
+
+        echo -n "Starting proxy"
+        for i in (seq 1 20)
+            if lsof -i:$PROXY_PORT >/dev/null 2>&1
+                echo " ✓"
+                return 0
+            end
+            echo -n "."
+            sleep 0.25
+        end
+        echo " ✗ (timeout)"
+        return 1
+    end
+
+    # ═══════════════════════════════════════════════════════════════
     # SWARM ON (managed session)
     # ═══════════════════════════════════════════════════════════════
     if test "$SWARM_MODE" = "true"
         echo "Starting swarm session..."
 
-        # Kill existing proxy
-        set PIDS (lsof -t -i:$PROXY_PORT 2>/dev/null)
-        if test -n "$PIDS"
-            kill -9 $PIDS 2>/dev/null
-        end
-
-        # Start proxy in background
-        cd "$PROXY_DIR"
-        set -e ANTHROPIC_API_KEY 2>/dev/null
-        set -e ANTHROPIC_AUTH_TOKEN 2>/dev/null
-        env ZAI_API_KEY="$ZAI_API_KEY" CCP_ALIAS_PROVIDER="anthropic" CCP_HOST="0.0.0.0" \
-            bun run src/cli.ts serve >/dev/null 2>&1 &
-
-        # Wait for proxy
-        echo -n "Starting proxy"
-        for i in (seq 1 20)
-            if lsof -i:$PROXY_PORT >/dev/null 2>&1
-                echo " ✓"
-                break
-            end
-            echo -n "."
-            sleep 0.25
-        end
+        _ensure_proxy
+        or exit 1
 
         # Verify Docker is running
         if not docker info >/dev/null 2>&1
@@ -108,62 +121,42 @@ function claudeRouter
             return 1
         end
 
-        # Start Docker containers
+        # Start Docker services
         cd "$CLOUDE_FLOW_DIR"
-        echo "Starting Cloude-flow containers..."
+        echo "Starting Cloude-flow services..."
         docker-compose -f docker-compose.yml -f docker-compose.proxy.yml up -d
 
-        # Launch claude-swarm inside container
+        # Run claude-swarm on the HOST
         echo "Launching claude-swarm (press Ctrl+D or type /exit to quit)..."
-        docker-compose -f docker-compose.yml -f docker-compose.proxy.yml exec -it app claude-swarm
+        cd "$CLOUDE_FLOW_DIR/claude-swarm"
+        env ANTHROPIC_BASE_URL="http://localhost:$PROXY_PORT" \
+            ANTHROPIC_MODEL="sonnet" \
+            ANTHROPIC_SMALL_FAST_MODEL="haiku" \
+            CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="1" \
+            bundle exec exe/claude-swarm
         set SWARM_EXIT $status
 
-        # Cleanup
+        # Stop Docker services (keep proxy running for normal terminals)
         echo ""
-        echo "Stopping swarm session..."
+        echo "Stopping Cloude-flow services..."
+        cd "$CLOUDE_FLOW_DIR"
         docker-compose -f docker-compose.yml -f docker-compose.proxy.yml down 2>/dev/null
-        set PIDS (lsof -t -i:$PROXY_PORT 2>/dev/null)
-        if test -n "$PIDS"
-            kill -9 $PIDS 2>/dev/null
-        end
         echo "Swarm stopped."
         return $SWARM_EXIT
     end
 
     # ═══════════════════════════════════════════════════════════════
-    # NORMAL MODE
+    # NORMAL MODE (supports multiple concurrent terminals)
     # ═══════════════════════════════════════════════════════════════
 
-    # Kill existing proxy
-    set PIDS (lsof -t -i:$PROXY_PORT 2>/dev/null)
-    if test -n "$PIDS"
-        kill -9 $PIDS 2>/dev/null
-    end
-
-    # Load ZAI key
-    if test -f "$ZAI_ENV_FILE"
-        set ZAI_API_KEY (grep '^ZAI_API_KEY=' "$ZAI_ENV_FILE" 2>/dev/null | cut -d= -f2-)
-    end
+    _ensure_proxy
+    or exit 1
 
     set ORIGINAL_DIR (pwd)
+    cd "$ORIGINAL_DIR"
+
     set -e ANTHROPIC_API_KEY 2>/dev/null
     set -e ANTHROPIC_AUTH_TOKEN 2>/dev/null
-
-    cd "$PROXY_DIR"
-    env ZAI_API_KEY="$ZAI_API_KEY" CCP_ALIAS_PROVIDER="anthropic" \
-        bun run src/cli.ts serve >/dev/null 2>&1 &
-
-    echo -n "Starting proxy"
-    for i in (seq 1 20)
-        if lsof -i:$PROXY_PORT >/dev/null 2>&1
-            echo " ✓"
-            break
-        end
-        echo -n "."
-        sleep 0.25
-    end
-
-    cd "$ORIGINAL_DIR"
 
     set -x ANTHROPIC_BASE_URL "http://localhost:$PROXY_PORT"
     set -x ANTHROPIC_MODEL "sonnet"

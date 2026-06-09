@@ -1,20 +1,24 @@
 # Swarm Integration (Cloude-flow)
 
-Use Claude Router as the upstream proxy for **Claude Swarm** agents running inside Docker containers. Every agent in your swarm routes through the same multi-provider gateway.
+Use Claude Router as the upstream proxy for **Claude Swarm** agents. The swarm runs on your **host machine** (not inside Docker), while Docker provides supporting services (PostgreSQL, Redis).
 
 ## How It Works
 
 ```
+Host machine:
 ┌─────────────────┐     ┌──────────────────────┐     ┌─────────────────┐
 │  claudeRouter   │────►│  localhost:18765     │────►│  Anthropic API  │
-│   --swarm       │     │  (binds 0.0.0.0)     │     │  Codex / GPT    │
+│   --swarm       │     │  (shared proxy)      │     │  Codex / GPT    │
 └─────────────────┘     └──────────────────────┘     │  Kimi           │
-         ▲                                           │  ZAI / GLM      │
+         │                                           │  ZAI / GLM      │
          │                                           └─────────────────┘
-         │ Docker host gateway
-┌────────┴────────┐
-│  Docker network │
-│  (Cloude-flow)  │
+         │
+         └────► bundle exec exe/claude-swarm (runs on host)
+
+Docker (background):
+┌─────────────────┐
+│  PostgreSQL     │
+│  Redis          │
 └─────────────────┘
 ```
 
@@ -22,30 +26,83 @@ Use Claude Router as the upstream proxy for **Claude Swarm** agents running insi
 
 | Command | What it does |
 |---|---|
-| `claudeRouter --swarm` | Starts proxy → starts Docker → launches `claude-swarm` inside container. Cleans up everything on exit. |
-| `claudeRouter --swarm --off` | Stops Docker containers + kills proxy |
+| `claudeRouter --swarm` | Starts proxy (or reuses) → starts Docker services → launches `claude-swarm` on host. Stops Docker on exit. Keeps proxy running. |
+| `claudeRouter --swarm --off` | Stops Docker services + kills proxy |
 | `claudeRouter --swarm --status` | Shows proxy + Docker status |
-| `claudeRouter` | Normal mode (unchanged) |
+| `claudeRouter` | Normal mode — reuses existing proxy if running. **Multiple terminals supported.** |
+
+## Prerequisites
+
+1. **Docker Desktop** running (for PostgreSQL/Redis)
+2. **rbenv** with Ruby 3.3+ (for claude-swarm gem)
+3. **Bundle install** completed in `Cloude-flow/claude-swarm/`
+
+If you haven't installed claude-swarm dependencies yet:
+
+```bash
+cd ~/Tools/Cloude-flow/claude-swarm
+bundle install
+```
+
+## Daily Use
+
+### Start a swarm session
+
+```bash
+claudeRouter --swarm
+```
+
+What happens:
+1. Proxy starts (or reuses existing one)
+2. Docker services (DB, Redis) start in background
+3. `claude-swarm` launches on the host
+4. Work with your AI team. Use `/model` to switch providers per agent.
+5. When you exit `claude-swarm`, Docker services stop automatically
+6. Proxy keeps running for normal `claudeRouter` terminals
+
+### Open multiple normal terminals
+
+Terminal 1:
+```bash
+claudeRouter
+# → starts proxy + Claude Code
+```
+
+Terminal 2:
+```bash
+claudeRouter
+# → reuses existing proxy + opens second Claude Code
+```
+
+Both share the same proxy. No conflicts.
+
+### Check status
+
+```bash
+claudeRouter --swarm --status
+```
+
+Output:
+```
+┌─────────────────────────────────────┐
+│        Swarm Status                 │
+├─────────────────────────────────────┤
+│ Proxy:     RUNNING (PID 12345)      │
+│ Docker:    RUNNING                  │
+└─────────────────────────────────────┘
+```
+
+### Stop everything
+
+```bash
+claudeRouter --swarm --off
+```
 
 ## One-Time Setup
 
-### 1. Proxy patch (already applied if you followed Setup)
-
-The proxy's `server.ts` must read `CCP_HOST` from the environment:
-
-```typescript
-// src/server.ts line ~76
-hostname: process.env.CCP_HOST ?? "127.0.0.1",
-```
-
-This is included in the `proxy/src/server.ts` patch in this repo.
-
-### 2. Create `docker-compose.proxy.yml` in Cloude-flow
-
-Save this next to your `Cloude-flow/docker-compose.yml`:
+Create `docker-compose.proxy.yml` in your `Cloude-flow/` directory:
 
 ```yaml
-# docker-compose.proxy.yml
 version: '3.8'
 services:
   app:
@@ -66,46 +123,3 @@ services:
       - ANTHROPIC_SMALL_FAST_MODEL=haiku
       - CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1
 ```
-
-## Daily Use
-
-### Start a swarm session
-
-```bash
-claudeRouter --swarm
-```
-
-What happens:
-1. Proxy starts on `0.0.0.0:18765` (Docker-accessible)
-2. Cloude-flow containers start with proxy overlay
-3. `claude-swarm` launches inside the app container
-4. Work with your AI team. Use `/model` to switch providers per agent.
-5. When you exit `claude-swarm`, everything auto-cleans up
-
-### Check status
-
-```bash
-claudeRouter --swarm --status
-```
-
-Output:
-```
-┌─────────────────────────────────────┐
-│        Swarm Status                 │
-├─────────────────────────────────────┤
-│ Proxy:     RUNNING (PID 12345)      │
-│ Docker:    RUNNING                  │
-└─────────────────────────────────────┘
-```
-
-### Stop early
-
-```bash
-claudeRouter --swarm --off
-```
-
-Stops Docker containers and kills the proxy.
-
-## Security Note
-
-`--swarm` binds the proxy to `0.0.0.0` (all interfaces). On a trusted local network this is low risk. Do **not** use `--swarm` on untrusted networks.
