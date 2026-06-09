@@ -4,9 +4,9 @@
 #
 # Usage:
 #   claudeRouter [args...]                     → normal mode (reuses existing proxy)
-#   claudeRouter --swarm                       → swarm mode (host-based claude-swarm)
-#   claudeRouter --swarm --off                 → stop swarm services + proxy
-#   claudeRouter --swarm --status              → show swarm status
+#   claudeRouter --swarm                       → swarm mode (claude-swarm on host)
+#   claudeRouter --swarm --off                 → stop proxy
+#   claudeRouter --swarm --status              → show proxy status
 
 PROXY_DIR="/Users/ibrahimalnutayfi/Desktop/Desktop - Ibrahim MAC/Tools/claude-code-proxy"
 CLOUDE_FLOW_DIR="/Users/ibrahimalnutayfi/Desktop/Desktop - Ibrahim MAC/Tools/Cloude-flow"
@@ -43,24 +43,18 @@ fi
 # SWARM STATUS
 # ═══════════════════════════════════════════════════════════════
 if [ "$SWARM_STATUS" = true ]; then
-  echo "┌─────────────────────────────────────┐"
-  echo "│        Swarm Status                 │"
-  echo "├─────────────────────────────────────┤"
+  echo "┌─────────────────────────────┐"
+  echo "│        Swarm Status         │"
+  echo "├─────────────────────────────┤"
 
   if lsof -i:$PROXY_PORT >/dev/null 2>&1; then
     PID=$(lsof -t -i:$PROXY_PORT 2>/dev/null)
-    echo "│ Proxy:     RUNNING (PID $PID)       │"
+    echo "│ Proxy:  RUNNING (PID $PID)  │"
   else
-    echo "│ Proxy:     STOPPED                  │"
+    echo "│ Proxy:  STOPPED             │"
   fi
 
-  if docker-compose -f "$CLOUDE_FLOW_DIR/docker-compose.yml" -f "$CLOUDE_FLOW_DIR/docker-compose.proxy.yml" ps 2>/dev/null | grep -q "Up"; then
-    echo "│ Docker:    RUNNING                  │"
-  else
-    echo "│ Docker:    STOPPED                  │"
-  fi
-
-  echo "└─────────────────────────────────────┘"
+  echo "└─────────────────────────────┘"
   exit 0
 fi
 
@@ -69,8 +63,6 @@ fi
 # ═══════════════════════════════════════════════════════════════
 if [ "$SWARM_OFF" = true ]; then
   echo "Stopping swarm..."
-  cd "$CLOUDE_FLOW_DIR" || exit 1
-  docker-compose -f docker-compose.yml -f docker-compose.proxy.yml down 2>/dev/null
   kill -9 $(lsof -t -i:$PROXY_PORT 2>/dev/null) 2>/dev/null
   echo "Swarm stopped."
   exit 0
@@ -108,7 +100,7 @@ ensure_proxy() {
 }
 
 # ═══════════════════════════════════════════════════════════════
-# SWARM ON (managed session)
+# SWARM ON (host-based, no Docker)
 # ═══════════════════════════════════════════════════════════════
 if [ "$SWARM_MODE" = true ]; then
   echo "Starting swarm session..."
@@ -116,20 +108,7 @@ if [ "$SWARM_MODE" = true ]; then
   # Start proxy (reuse if already running)
   ensure_proxy || exit 1
 
-  # Verify Docker is running
-  if ! docker info >/dev/null 2>&1; then
-    echo ""
-    echo "❌ Docker is not running. Start Docker Desktop first:"
-    echo "   open -a Docker"
-    exit 1
-  fi
-
-  # Start Docker services
-  cd "$CLOUDE_FLOW_DIR" || exit 1
-  echo "Starting Cloude-flow services..."
-  docker-compose -f docker-compose.yml -f docker-compose.proxy.yml up -d
-
-  # Run claude-swarm on the HOST (not inside the broken container)
+  # Run claude-swarm on the HOST
   echo "Launching claude-swarm (press Ctrl+D or type /exit to quit)..."
   cd "$CLOUDE_FLOW_DIR/claude-swarm" || exit 1
   ANTHROPIC_BASE_URL="http://localhost:$PROXY_PORT" \
@@ -138,13 +117,7 @@ if [ "$SWARM_MODE" = true ]; then
   CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="1" \
     bundle exec exe/claude-swarm
 
-  # Stop Docker services (keep proxy running for normal terminals)
-  echo ""
-  echo "Stopping Cloude-flow services..."
-  cd "$CLOUDE_FLOW_DIR"
-  docker-compose -f docker-compose.yml -f docker-compose.proxy.yml down 2>/dev/null
-  echo "Swarm stopped."
-
+  echo "Swarm session ended."
   exit 0
 fi
 

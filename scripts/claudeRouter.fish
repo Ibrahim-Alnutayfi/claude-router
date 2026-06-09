@@ -39,25 +39,18 @@ function claudeRouter
     # SWARM STATUS
     # ═══════════════════════════════════════════════════════════════
     if test "$SWARM_STATUS" = "true"
-        echo "┌─────────────────────────────────────┐"
-        echo "│        Swarm Status                 │"
-        echo "├─────────────────────────────────────┤"
+        echo "┌─────────────────────────────┐"
+        echo "│        Swarm Status         │"
+        echo "├─────────────────────────────┤"
 
         set PIDS (lsof -t -i:$PROXY_PORT 2>/dev/null)
         if test -n "$PIDS"
-            echo "│ Proxy:     RUNNING (PID $PIDS)      │"
+            echo "│ Proxy:  RUNNING (PID $PIDS) │"
         else
-            echo "│ Proxy:     STOPPED                  │"
+            echo "│ Proxy:  STOPPED             │"
         end
 
-        set DOCKER_UP (docker-compose -f "$CLOUDE_FLOW_DIR/docker-compose.yml" -f "$CLOUDE_FLOW_DIR/docker-compose.proxy.yml" ps 2>/dev/null | grep -c "Up" 2>/dev/null)
-        if test "$DOCKER_UP" -gt 0
-            echo "│ Docker:    RUNNING                  │"
-        else
-            echo "│ Docker:    STOPPED                  │"
-        end
-
-        echo "└─────────────────────────────────────┘"
+        echo "└─────────────────────────────┘"
         return
     end
 
@@ -66,8 +59,6 @@ function claudeRouter
     # ═══════════════════════════════════════════════════════════════
     if test "$SWARM_OFF" = "true"
         echo "Stopping swarm..."
-        cd "$CLOUDE_FLOW_DIR"
-        docker-compose -f docker-compose.yml -f docker-compose.proxy.yml down 2>/dev/null
         set PIDS (lsof -t -i:$PROXY_PORT 2>/dev/null)
         if test -n "$PIDS"
             kill -9 $PIDS 2>/dev/null
@@ -105,26 +96,13 @@ function claudeRouter
     end
 
     # ═══════════════════════════════════════════════════════════════
-    # SWARM ON (managed session)
+    # SWARM ON (host-based, no Docker)
     # ═══════════════════════════════════════════════════════════════
     if test "$SWARM_MODE" = "true"
         echo "Starting swarm session..."
 
         _ensure_proxy
         or exit 1
-
-        # Verify Docker is running
-        if not docker info >/dev/null 2>&1
-            echo ""
-            echo "❌ Docker is not running. Start Docker Desktop first:"
-            echo "   open -a Docker"
-            return 1
-        end
-
-        # Start Docker services
-        cd "$CLOUDE_FLOW_DIR"
-        echo "Starting Cloude-flow services..."
-        docker-compose -f docker-compose.yml -f docker-compose.proxy.yml up -d
 
         # Run claude-swarm on the HOST
         echo "Launching claude-swarm (press Ctrl+D or type /exit to quit)..."
@@ -136,12 +114,7 @@ function claudeRouter
             bundle exec exe/claude-swarm
         set SWARM_EXIT $status
 
-        # Stop Docker services (keep proxy running for normal terminals)
-        echo ""
-        echo "Stopping Cloude-flow services..."
-        cd "$CLOUDE_FLOW_DIR"
-        docker-compose -f docker-compose.yml -f docker-compose.proxy.yml down 2>/dev/null
-        echo "Swarm stopped."
+        echo "Swarm session ended."
         return $SWARM_EXIT
     end
 
