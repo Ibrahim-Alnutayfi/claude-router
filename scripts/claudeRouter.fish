@@ -1,6 +1,6 @@
 function claudeRouter
-    set PROXY_DIR "/Users/ibrahimalnutayfi/Desktop/Desktop - Ibrahim MAC/Tools/claude-code-proxy"
-    set CLOUDE_FLOW_DIR "/Users/ibrahimalnutayfi/Desktop/Desktop - Ibrahim MAC/Tools/Cloude-flow"
+    set PROXY_DIR "/Users/inutayfi/Desktop/LLMs/claude-code-proxy"
+    set CLOUDE_FLOW_DIR "/Users/inutayfi/Desktop/LLMs/Cloude-flow"
     set PROXY_PORT 18765
     set ZAI_ENV_FILE "$HOME/.config/claude-router/.env"
 
@@ -76,11 +76,14 @@ function claudeRouter
             return 0
         end
 
-        cd "$PROXY_DIR"
+        pushd "$PROXY_DIR" >/dev/null
         set -e ANTHROPIC_API_KEY 2>/dev/null
         set -e ANTHROPIC_AUTH_TOKEN 2>/dev/null
-        env ZAI_API_KEY="$ZAI_API_KEY" CCP_ALIAS_PROVIDER="anthropic" \
-            bun run src/cli.ts serve >/dev/null 2>&1 &
+        set -q CCP_CODEX_TRANSPORT; or set CCP_CODEX_TRANSPORT auto
+        env ZAI_API_KEY="$ZAI_API_KEY" CCP_ALIAS_PROVIDER="codex" \
+            CCP_CODEX_TRANSPORT="$CCP_CODEX_TRANSPORT" \
+            cargo run --release -- serve >/dev/null 2>&1 &
+        popd >/dev/null
 
         echo -n "Starting proxy"
         for i in (seq 1 20)
@@ -107,11 +110,11 @@ function claudeRouter
         # Run claude-swarm on the HOST
         echo "Launching claude-swarm (press Ctrl+D or type /exit to quit)..."
         cd "$CLOUDE_FLOW_DIR/claude-swarm"
+        set -e ANTHROPIC_MODEL 2>/dev/null
         env ANTHROPIC_BASE_URL="http://localhost:$PROXY_PORT" \
-            ANTHROPIC_MODEL="sonnet" \
             ANTHROPIC_SMALL_FAST_MODEL="haiku" \
             CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="1" \
-            bundle exec exe/claude-swarm
+            bundle exec claude-swarm
         set SWARM_EXIT $status
 
         echo "Swarm session ended."
@@ -132,7 +135,7 @@ function claudeRouter
     set -e ANTHROPIC_AUTH_TOKEN 2>/dev/null
 
     set -x ANTHROPIC_BASE_URL "http://localhost:$PROXY_PORT"
-    set -x ANTHROPIC_MODEL "sonnet"
+    set -x ANTHROPIC_MODEL "claude-sonnet-5"
     set -x ANTHROPIC_SMALL_FAST_MODEL "haiku"
     set -x CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC "1"
 
