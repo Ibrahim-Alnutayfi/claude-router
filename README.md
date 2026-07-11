@@ -4,11 +4,12 @@ A multi-provider proxy gateway for [Claude Code](https://docs.anthropic.com/en/d
 
 ## What It Does
 
-Claude Router starts a local proxy server and launches Claude Code with the correct environment. When you type `/model gpt-5.5`, `/model kimi-k2.6`, or `/model sonnet`, the proxy routes each request to the correct upstream provider.
+Claude Router starts a local proxy server and launches Claude Code with the correct environment. When you type `/model gpt-5.6-sol`, `/model gpt-5.5`, `/model kimi-k2.6`, or `/model sonnet`, the proxy routes each request to the correct upstream provider.
 
 | Model Alias | Provider | Auth Required |
 |---|---|---|
 | `sonnet`, `opus`, `haiku` | **Anthropic** | Claude Pro/Max OAuth (macOS Keychain) |
+| `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-5.6` | **OpenAI Codex** | `codex login` |
 | `gpt-5.5`, `gpt-5.4`, etc. | **OpenAI Codex** | `codex login` |
 | `kimi-k2.6`, `kimi-for-coding` | **Kimi** | `claude-code-proxy kimi auth login` |
 | `glm-5.1`, `glm-4-plus`, etc. | **ZAI / GLM** | `ZAI_API_KEY` env var |
