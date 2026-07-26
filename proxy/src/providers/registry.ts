@@ -13,7 +13,7 @@ export const ANTHROPIC_STYLE_ALIASES = new Set([
   "claude-sonnet-4-6",
   "opus",
   "claude-opus-4-7",
-  "claude-opus-4-8",
+  "claude-opus-5",
 ]);
 
 const PROVIDERS: Record<string, Provider> = {

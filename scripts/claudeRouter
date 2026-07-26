@@ -10,6 +10,7 @@
 
 PROXY_DIR="/Users/inutayfi/Desktop/LLMs/claude-code-proxy"
 CLOUDE_FLOW_DIR="/Users/inutayfi/Desktop/LLMs/claude-flow"
+CLAUDE_SWARM_DIR="/Users/inutayfi/Desktop/LLMs/claude-swarm"
 PROXY_PORT=18765
 ZAI_ENV_FILE="$HOME/.config/claude-router/.env"
 
@@ -47,8 +48,8 @@ if [ "$SWARM_STATUS" = true ]; then
   echo "│        Swarm Status         │"
   echo "├─────────────────────────────┤"
 
-  if lsof -i:$PROXY_PORT >/dev/null 2>&1; then
-    PID=$(lsof -t -i:$PROXY_PORT 2>/dev/null)
+  if lsof -n -P -i:$PROXY_PORT >/dev/null 2>&1; then
+    PID=$(lsof -t -n -P -i:$PROXY_PORT 2>/dev/null)
     echo "│ Proxy:  RUNNING (PID $PID)  │"
   else
     echo "│ Proxy:  STOPPED             │"
@@ -63,7 +64,7 @@ fi
 # ═══════════════════════════════════════════════════════════════
 if [ "$SWARM_OFF" = true ]; then
   echo "Stopping swarm..."
-  kill -9 $(lsof -t -i:$PROXY_PORT 2>/dev/null) 2>/dev/null
+  kill -9 $(lsof -t -n -P -i:$PROXY_PORT 2>/dev/null) 2>/dev/null
   echo "Swarm stopped."
   exit 0
 fi
@@ -72,7 +73,7 @@ fi
 # HELPER: start proxy if not already running
 # ═══════════════════════════════════════════════════════════════
 ensure_proxy() {
-  if lsof -i:$PROXY_PORT >/dev/null 2>&1; then
+  if lsof -n -P -i:$PROXY_PORT >/dev/null 2>&1; then
     echo "Proxy already running on port $PROXY_PORT (reusing)"
     return 0
   fi
@@ -84,12 +85,12 @@ ensure_proxy() {
     export ZAI_API_KEY="$ZAI_API_KEY"
     export CCP_ALIAS_PROVIDER="codex"
     export CCP_CODEX_TRANSPORT="${CCP_CODEX_TRANSPORT:-auto}"
-    cargo run --release -- serve >/dev/null 2>&1 &
+    ./target/release/claude-code-proxy serve >/dev/null 2>&1 &
   )
 
   echo -n "Starting proxy"
   for i in {1..20}; do
-    if lsof -i:$PROXY_PORT >/dev/null 2>&1; then
+    if lsof -n -P -i:$PROXY_PORT >/dev/null 2>&1; then
       echo " ✓"
       return 0
     fi
@@ -135,12 +136,12 @@ if [ "$SWARM_MODE" = true ]; then
   cd "$CALLER_DIR"
   echo "📂 Working directory: $CALLER_DIR"
   echo "Launching claude-swarm (press Ctrl+D or type /exit to quit)..."
-  cd "$CLOUDE_FLOW_DIR/claude-swarm" || exit 1
+  cd "$CLAUDE_SWARM_DIR" || exit 1
   unset ANTHROPIC_MODEL 2>/dev/null
-  export ANTHROPIC_BASE_URL="http://localhost:$PROXY_PORT"
+  export ANTHROPIC_BASE_URL="http://127.0.0.1:$PROXY_PORT"
   export ANTHROPIC_SMALL_FAST_MODEL="${ANTHROPIC_SMALL_FAST_MODEL:-haiku}"
   export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="1"
-  bundle exec claude-swarm
+  claude-swarm
 
   echo "Swarm session ended."
   exit 0
@@ -161,7 +162,7 @@ cd "$ORIGINAL_DIR"
 unset ANTHROPIC_API_KEY 2>/dev/null
 unset ANTHROPIC_AUTH_TOKEN 2>/dev/null
 
-export ANTHROPIC_BASE_URL="http://localhost:$PROXY_PORT"
+export ANTHROPIC_BASE_URL="http://127.0.0.1:$PROXY_PORT"
 export ANTHROPIC_MODEL="claude-sonnet-5"
 export ANTHROPIC_SMALL_FAST_MODEL="haiku"
 export CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="1"

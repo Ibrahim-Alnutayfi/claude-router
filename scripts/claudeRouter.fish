@@ -1,6 +1,7 @@
 function claudeRouter
     set PROXY_DIR "/Users/inutayfi/Desktop/LLMs/claude-code-proxy"
-    set CLOUDE_FLOW_DIR "/Users/inutayfi/Desktop/LLMs/Cloude-flow"
+    set CLOUDE_FLOW_DIR "/Users/inutayfi/Desktop/LLMs/claude-flow"
+    set CLAUDE_SWARM_DIR "/Users/inutayfi/Desktop/LLMs/claude-swarm"
     set PROXY_PORT 18765
     set ZAI_ENV_FILE "$HOME/.config/claude-router/.env"
 
@@ -43,7 +44,7 @@ function claudeRouter
         echo "│        Swarm Status         │"
         echo "├─────────────────────────────┤"
 
-        set PIDS (lsof -t -i:$PROXY_PORT 2>/dev/null)
+        set PIDS (lsof -t -n -P -i:$PROXY_PORT 2>/dev/null)
         if test -n "$PIDS"
             echo "│ Proxy:  RUNNING (PID $PIDS) │"
         else
@@ -59,7 +60,7 @@ function claudeRouter
     # ═══════════════════════════════════════════════════════════════
     if test "$SWARM_OFF" = "true"
         echo "Stopping swarm..."
-        set PIDS (lsof -t -i:$PROXY_PORT 2>/dev/null)
+        set PIDS (lsof -t -n -P -i:$PROXY_PORT 2>/dev/null)
         if test -n "$PIDS"
             kill -9 $PIDS 2>/dev/null
         end
@@ -70,8 +71,8 @@ function claudeRouter
     # ═══════════════════════════════════════════════════════════════
     # HELPER: ensure proxy is running
     # ═══════════════════════════════════════════════════════════════
-    function _ensure_proxy
-        if lsof -i:$PROXY_PORT >/dev/null 2>&1
+    function _ensure_proxy -a PROXY_PORT PROXY_DIR ZAI_API_KEY
+        if lsof -n -P -i:$PROXY_PORT >/dev/null 2>&1
             echo "Proxy already running on port $PROXY_PORT (reusing)"
             return 0
         end
@@ -82,12 +83,12 @@ function claudeRouter
         set -q CCP_CODEX_TRANSPORT; or set CCP_CODEX_TRANSPORT auto
         env ZAI_API_KEY="$ZAI_API_KEY" CCP_ALIAS_PROVIDER="codex" \
             CCP_CODEX_TRANSPORT="$CCP_CODEX_TRANSPORT" \
-            cargo run --release -- serve >/dev/null 2>&1 &
+            ./target/release/claude-code-proxy serve >/dev/null 2>&1 &
         popd >/dev/null
 
         echo -n "Starting proxy"
         for i in (seq 1 20)
-            if lsof -i:$PROXY_PORT >/dev/null 2>&1
+            if lsof -n -P -i:$PROXY_PORT >/dev/null 2>&1
                 echo " ✓"
                 return 0
             end
@@ -104,17 +105,17 @@ function claudeRouter
     if test "$SWARM_MODE" = "true"
         echo "Starting swarm session..."
 
-        _ensure_proxy
+        _ensure_proxy $PROXY_PORT $PROXY_DIR "$ZAI_API_KEY"
         or exit 1
 
         # Run claude-swarm on the HOST
         echo "Launching claude-swarm (press Ctrl+D or type /exit to quit)..."
-        cd "$CLOUDE_FLOW_DIR/claude-swarm"
+        cd "$CLAUDE_SWARM_DIR"
         set -e ANTHROPIC_MODEL 2>/dev/null
-        env ANTHROPIC_BASE_URL="http://localhost:$PROXY_PORT" \
+        env ANTHROPIC_BASE_URL="http://127.0.0.1:$PROXY_PORT" \
             ANTHROPIC_SMALL_FAST_MODEL="haiku" \
             CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="1" \
-            bundle exec claude-swarm
+            claude-swarm
         set SWARM_EXIT $status
 
         echo "Swarm session ended."
@@ -125,7 +126,7 @@ function claudeRouter
     # NORMAL MODE (supports multiple concurrent terminals)
     # ═══════════════════════════════════════════════════════════════
 
-    _ensure_proxy
+    _ensure_proxy $PROXY_PORT $PROXY_DIR "$ZAI_API_KEY"
     or exit 1
 
     set ORIGINAL_DIR (pwd)
@@ -134,7 +135,7 @@ function claudeRouter
     set -e ANTHROPIC_API_KEY 2>/dev/null
     set -e ANTHROPIC_AUTH_TOKEN 2>/dev/null
 
-    set -x ANTHROPIC_BASE_URL "http://localhost:$PROXY_PORT"
+    set -x ANTHROPIC_BASE_URL "http://127.0.0.1:$PROXY_PORT"
     set -x ANTHROPIC_MODEL "claude-sonnet-5"
     set -x ANTHROPIC_SMALL_FAST_MODEL "haiku"
     set -x CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC "1"

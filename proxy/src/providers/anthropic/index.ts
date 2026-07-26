@@ -128,7 +128,7 @@ const ALIAS_MAP: Record<string, string> = {
   "claude-sonnet-4-6": "claude-sonnet-4-20250514",
   "opus": "claude-opus-4-20250514",
   "claude-opus-4-7": "claude-opus-4-20250514",
-  "claude-opus-4-8": "claude-opus-4-20250514",
+  "claude-opus-5": "claude-opus-4-20250514",
 };
 
 async function handleMessages(body: AnthropicRequest, ctx: RequestContext): Promise<Response> {
@@ -171,7 +171,7 @@ export const anthropicProvider: Provider = {
     "claude-sonnet-4-6",
     "opus",
     "claude-opus-4-7",
-    "claude-opus-4-8",
+    "claude-opus-5",
   ]),
   handleMessages,
   handleCountTokens,
